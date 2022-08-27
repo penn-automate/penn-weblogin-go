@@ -8,8 +8,21 @@ import (
 	"strings"
 
 	"github.com/PuerkitoBio/goquery"
-	cookiejar "github.com/juju/persistent-cookiejar"
+	"github.com/juju/persistent-cookiejar"
 )
+
+type Config struct {
+	CookieFile string
+
+	CredentialFunc func() (username, password string)
+	TwoFactorFunc  func() (token string, trust bool)
+}
+
+type WebLogin struct {
+	config Config
+	jar    *cookiejar.Jar
+	client *http.Client
+}
 
 func NewWebLogin(cfg Config) (*WebLogin, error) {
 	jar, err := cookiejar.New(&cookiejar.Options{
@@ -56,7 +69,7 @@ func (w *WebLogin) do(req *http.Request, lastLogin bool) (*http.Response, error)
 	}
 
 	switch val {
-	case loginFormId:
+	case "login-form":
 		if lastLogin {
 			return nil, errors.New("unknown error occurred")
 		}
@@ -65,7 +78,7 @@ func (w *WebLogin) do(req *http.Request, lastLogin bool) (*http.Response, error)
 			return nil, errors.New(formErr.Text())
 		}
 		return w.login(u, form)
-	case twoStepFormId:
+	case "two-step-form":
 		return w.twoStep(u, form)
 	}
 	return nil, errors.New("unknown form action " + val)
@@ -122,7 +135,7 @@ func (w *WebLogin) login(u *url.URL, form *goquery.Selection) (*http.Response, e
 }
 
 func (w *WebLogin) twoStep(u *url.URL, form *goquery.Selection) (*http.Response, error) {
-	if w.config.CredentialFunc == nil {
+	if w.config.TwoFactorFunc == nil {
 		return nil, errors.New("login requires two factor function")
 	}
 
@@ -200,10 +213,5 @@ func (w *WebLogin) final(u *url.URL, form *goquery.Selection) (*http.Response, e
 		Body:   io.NopCloser(strings.NewReader(params.Encode())),
 	}, true)
 }
-
-const (
-	loginFormId   = "login-form"
-	twoStepFormId = "two-step-form"
-)
 
 var formError = errors.New("cannot retrieve form action")
